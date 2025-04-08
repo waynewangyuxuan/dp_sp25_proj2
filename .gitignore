@@ -45,6 +45,12 @@ models/
 *.csv
 *.json
 !config.json
+!best.pth
+!*_best.pth
+!best_model.pt
+!best_model.pth
+!best_model.bin
+!best_model.ckpt
 
 # Jupyter Notebook
 .ipynb_checkpoints
