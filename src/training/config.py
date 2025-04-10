@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, Any, Optional
 import torch
 
@@ -17,19 +17,18 @@ class TrainingConfig:
     
     # LoRA configuration
     lora_config: Dict[str, Any] = None
-    default_lora_config: Dict[str, Any] = {
-        'r': 8,  # LoRA attention dimension
-        'lora_alpha': 16,  # Alpha scaling
+    default_lora_config: Dict[str, Any] = field(default_factory=lambda: {
+        'r': 1,  # Minimal LoRA attention dimension
+        'lora_alpha': 2,  # Reduced Alpha scaling
         'lora_dropout': 0.1,
         'bias': 'none',
         'task_type': 'SEQ_CLS',
-        # Target specific layers for LoRA adaptation
-        'target_modules': [
-            'query',
-            'key',
-            'value'
-        ],
-    }
+        # Target only query projection in first layer
+        'target_modules': ["roberta.encoder.layer.0.attention.self.query"],
+        'modules_to_save': None,  # Don't save any modules separately
+        'fan_in_fan_out': False,
+        'init_lora_weights': True
+    })
     
     # Training hyperparameters
     learning_rate: float = 2e-4  # Slightly higher LR since we're only training LoRA params

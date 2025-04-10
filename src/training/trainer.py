@@ -133,8 +133,11 @@ class CustomTrainer(Trainer):
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.config = kwargs.get('config', TrainingConfig())
+        
+        # Setup output directories
         self._setup_output_dirs()
+        
+        # Initialize metrics tracking
         self.metrics_history = {
             'train_loss': [],
             'eval_loss': [],
@@ -153,22 +156,14 @@ class CustomTrainer(Trainer):
         
     def _setup_multi_gpu(self):
         """Configure multi-GPU training"""
-        if not self.config.use_multi_gpu:
-            return
-            
         n_gpus = torch.cuda.device_count()
         if n_gpus > 1:
-            self._log_to_file(f"Found {n_gpus} GPUs. Setting up {self.config.strategy} training.")
+            self._log_to_file(f"Found {n_gpus} GPUs. Setting up distributed training.")
             
-            if self.config.strategy == 'ddp':
-                # DDP will be handled by the Trainer class automatically
-                self.args.local_rank = int(os.environ.get("LOCAL_RANK", -1))
-                self.args.distributed = True
-                
-            elif self.config.strategy == 'dp':
-                # Wrap model in DataParallel
-                self.model = torch.nn.DataParallel(self.model)
-                
+            # DDP will be handled by the Trainer class automatically
+            self.args.local_rank = int(os.environ.get("LOCAL_RANK", -1))
+            self.args.distributed = True
+            
             # Log GPU information
             for i in range(n_gpus):
                 gpu_props = torch.cuda.get_device_properties(i)
@@ -186,49 +181,43 @@ class CustomTrainer(Trainer):
         timestamp = datetime.now().strftime("%Y_%m_%d_%H_%M")
         
         # Setup directory structure
-        self.run_dir = os.path.join(self.config.output_dir, "training_runs", timestamp)
-        self.checkpoints_dir = os.path.join(self.run_dir, "checkpoints")
-        self.logs_dir = os.path.join(self.run_dir, "logs")
-        self.figures_dir = os.path.join(self.run_dir, "figures")
-        self.best_models_dir = os.path.join(self.config.output_dir, "best_models")
+        run_dir = os.path.join(self.args.output_dir, "training_runs", timestamp)
+        self.checkpoints_dir = os.path.join(run_dir, "checkpoints")
+        self.logs_dir = os.path.join(run_dir, "logs")
+        self.figures_dir = os.path.join(run_dir, "figures")
+        self.best_models_dir = os.path.join(self.args.output_dir, "best_models")
         
-        # Only create directories on the main process in distributed training
-        if not hasattr(self.args, 'local_rank') or self.args.local_rank <= 0:
-            os.makedirs(self.run_dir, exist_ok=True)
-            os.makedirs(self.checkpoints_dir, exist_ok=True)
-            os.makedirs(self.logs_dir, exist_ok=True)
-            os.makedirs(self.figures_dir, exist_ok=True)
-            os.makedirs(self.best_models_dir, exist_ok=True)
-            
-            # Setup log files
-            self.log_file = os.path.join(self.logs_dir, "training.log")
-            self.metrics_file = os.path.join(self.logs_dir, "metrics.csv")
-            self.config_file = os.path.join(self.logs_dir, "config.json")
-            
-            # Save configuration
-            self._save_config()
-            
-            # Initialize metrics CSV file with header
-            with open(self.metrics_file, 'w', newline='') as f:
-                writer = csv.writer(f)
-                writer.writerow(['step', 'epoch', 'train_loss', 'eval_loss', 'eval_accuracy', 
-                               'learning_rate', 'time_elapsed', 'memory_used_mb'])
-            
-            # Log model information
-            self._log_model_info()
+        # Create directories
+        os.makedirs(run_dir, exist_ok=True)
+        os.makedirs(self.checkpoints_dir, exist_ok=True)
+        os.makedirs(self.logs_dir, exist_ok=True)
+        os.makedirs(self.figures_dir, exist_ok=True)
+        os.makedirs(self.best_models_dir, exist_ok=True)
+        
+        # Setup log files
+        self.log_file = os.path.join(self.logs_dir, "training.log")
+        self.metrics_file = os.path.join(self.logs_dir, "metrics.csv")
+        self.config_file = os.path.join(self.logs_dir, "config.json")
+        
+        # Save configuration
+        self._save_config()
+        
+        # Initialize metrics CSV file with header
+        with open(self.metrics_file, 'w', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow(['step', 'epoch', 'train_loss', 'eval_loss', 'eval_accuracy', 
+                           'learning_rate', 'time_elapsed', 'memory_used_mb'])
+        
+        # Log model information
+        self._log_model_info()
         
         # Set matplotlib style
         plt.style.use('seaborn-v0_8-darkgrid')
     
     def _save_config(self):
         """Save configuration to a JSON file"""
-        config_dict = {}
-        for key, value in vars(self.config).items():
-            if not key.startswith('_'):  # Skip private attributes
-                if isinstance(value, (int, float, str, bool, list, dict, tuple)) or value is None:
-                    config_dict[key] = value
-                else:
-                    config_dict[key] = str(value)
+        # Convert training arguments to dict
+        config_dict = self.args.to_dict()
         
         with open(self.config_file, 'w') as f:
             json.dump(config_dict, f, indent=4)
@@ -241,10 +230,9 @@ class CustomTrainer(Trainer):
         self._log_to_file("=" * 80)
         self._log_to_file("MODEL INFORMATION")
         self._log_to_file("=" * 80)
-        self._log_to_file(f"Model Name: {self.config.model_name}")
         self._log_to_file(f"Total Parameters: {total_params:,}")
         self._log_to_file(f"Trainable Parameters: {trainable_params:,}")
-        self._log_to_file(f"LoRA Configuration: {self.config.lora_config}")
+        self._log_to_file(f"Training Arguments: {self.args}")
         self._log_to_file("\n" + "=" * 80)
     
     def _log_to_file(self, message: str):
