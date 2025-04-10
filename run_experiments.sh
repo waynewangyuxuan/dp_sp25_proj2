@@ -67,7 +67,7 @@ submit_job() {
 cd $BASE_DIR
 
 # Activate virtual environment (if needed)
-# source activate.sh
+source activate.sh
 
 # Run the training script
 python scripts/train.py --exp_name $exp_name --lora_r $lora_r --lora_alpha $lora_alpha --target_layers $target_layers --learning_rate $learning_rate --batch_size $batch_size --num_epochs $num_epochs
