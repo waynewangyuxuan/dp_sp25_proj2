@@ -12,7 +12,7 @@ import time
 
 # Define paths
 PROJECT_ROOT = Path(__file__).parent.parent
-TEST_CSV_FILE = PROJECT_ROOT / "data" / "test" / "test_unlabelled.csv"
+TEST_CSV_FILE = PROJECT_ROOT / "data" / "test" / "test_data_8000.csv"
 SUBMISSION_DIR = PROJECT_ROOT / "submissions"
 DEFAULT_MODEL_DIR = "/scratch/yw5954/dp_sp25_proj2/outputs/run_20250410_123525_r16_a32_l6_lr0.0002"
 
@@ -97,12 +97,11 @@ def generate_predictions(model, tokenizer, texts, device, batch_size=128):
             # Time this batch
             batch_start = time.time()
             
-            # Tokenize
+            # Tokenize - no max_length to use full sequence
             inputs = tokenizer(
                 batch_texts,
                 padding=True,
                 truncation=True,
-                max_length=256,  # Limit token length for efficiency
                 return_tensors="pt"
             ).to(device)
             
@@ -142,7 +141,7 @@ def save_predictions(predictions, output_file):
     # Create DataFrame with ID and Labels columns
     df = pd.DataFrame({
         'ID': range(len(predictions)),
-        'Labels': predictions
+        'Label': predictions
     })
     
     # Save to CSV
