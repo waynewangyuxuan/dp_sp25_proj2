@@ -1,9 +1,10 @@
-# Python
+# Python-specific
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
+env/
 build/
 develop-eggs/
 dist/
@@ -15,53 +16,55 @@ lib64/
 parts/
 sdist/
 var/
-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+.pytest_cache/
 
 # Virtual Environment
 venv/
-env/
 ENV/
-.env
-.venv
+env/
 
-# IDE
-.idea/
-.vscode/
-*.swp
-*.swo
-
-# Project specific
+# Training outputs and logs
 outputs/
-data/
-models/
+logs/
+checkpoints/
+sbatch_scripts/
+*.out
+*.err
+*.log
 *.pt
 *.pth
 *.bin
-*.ckpt
-*.log
-*.csv
-*.json
-!config.json
-!best.pth
-!*_best.pth
-!best_model.pt
-!best_model.pth
-!best_model.bin
-!best_model.ckpt
+*.safetensors
+
+# Model/Dataset cache
+cache/
+.cache/
+wandb/
 
 # Jupyter Notebook
 .ipynb_checkpoints
 *.ipynb
 
-# Logs
-logs/
-*.log
-slurm_*.out
-slurm_*.err
+# Editor-specific
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
 
-# OS specific
+# OS-specific
 .DS_Store
-Thumbs.db 
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Specific to this project
+best_models/
+results/
+slurm-*.out 
