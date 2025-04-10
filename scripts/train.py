@@ -24,9 +24,6 @@ from datasets import load_dataset
 from peft import LoraConfig, get_peft_model
 from sklearn.metrics import accuracy_score
 
-# Add src to Python path
-sys.path.append(str(Path(__file__).parent.parent))
-
 def setup_logging(output_dir):
     """Setup logging configuration"""
     log_dir = Path(output_dir) / "logs"
@@ -45,11 +42,14 @@ def setup_logging(output_dir):
 def parse_args():
     """Parse command line arguments"""
     parser = argparse.ArgumentParser(description='Train LoRA model on AG News dataset')
-    parser.add_argument('--exp_name', type=str, required=True, help='Experiment name')
+    parser.add_argument('--exp_name', type=str, default=None, help='Experiment name (default: auto-generated based on config)')
     parser.add_argument('--batch_size', type=int, default=32, help='Batch size')
     parser.add_argument('--learning_rate', type=float, default=2e-4, help='Learning rate')
     parser.add_argument('--num_epochs', type=int, default=10, help='Number of epochs')
-    parser.add_argument('--output_dir', type=str, required=True, help='Output directory')
+    parser.add_argument('--lora_r', type=int, default=8, help='LoRA rank')
+    parser.add_argument('--lora_alpha', type=int, default=16, help='LoRA alpha')
+    parser.add_argument('--target_layers', type=int, default=6, help='Number of layers to apply LoRA to')
+    parser.add_argument('--output_dir', type=str, default=None, help='Output directory (default: auto-generated)')
     return parser.parse_args()
 
 def compute_metrics(pred):
@@ -65,9 +65,30 @@ def main():
     # Parse command line arguments
     args = parse_args()
     
+    # Generate descriptive run name if not provided
+    if args.exp_name is None:
+        import datetime
+        now = datetime.datetime.now()
+        date_str = now.strftime("%Y%m%d_%H%M%S")
+        args.exp_name = f"run_{date_str}_r{args.lora_r}_a{args.lora_alpha}_l{args.target_layers}_lr{args.learning_rate}"
+        print(f"Using auto-generated experiment name: {args.exp_name}")
+    
+    # Generate output directory if not provided
+    if args.output_dir is None:
+        # Always create output directory based on experiment name to keep them linked
+        args.output_dir = os.path.join("outputs", args.exp_name)
+        print(f"Using auto-generated output directory: {args.output_dir}")
+        
     # Setup logging
     logger = setup_logging(args.output_dir)
     logger.info(f"Starting experiment: {args.exp_name}")
+    logger.info(f"Configuration:")
+    logger.info(f"  - LoRA rank (r): {args.lora_r}")
+    logger.info(f"  - LoRA alpha: {args.lora_alpha}")
+    logger.info(f"  - Target layers: {args.target_layers}")
+    logger.info(f"  - Learning rate: {args.learning_rate}")
+    logger.info(f"  - Batch size: {args.batch_size}")
+    logger.info(f"  - Number of epochs: {args.num_epochs}")
     
     # Set random seed for reproducibility
     set_seed(42)
@@ -107,17 +128,11 @@ def main():
     for param in model.parameters():
         param.requires_grad = False
     
-    # Analyze model structure
-    logger.info("Model structure:")
-    for name, module in model.named_modules():
-        if 'query' in name and 'layer.0' in name:
-            logger.info(f"Found first layer query: {name}")
-    
-    # Setup LoRA configuration - targetting only what we need
+    # Setup LoRA configuration
     logger.info("Setting up LoRA config...")
     peft_config = LoraConfig(
-        r=8,  # Increase rank for more parameters
-        lora_alpha=16,  # Twice the rank
+        r=args.lora_r,
+        lora_alpha=args.lora_alpha,
         lora_dropout=0.05,
         target_modules=["query", "key", "value"],  # Target all attention components
         task_type="SEQ_CLS",
@@ -128,13 +143,9 @@ def main():
     logger.info("Applying LoRA...")
     peft_model = get_peft_model(model, peft_config)
     
-    # Don't try to access adapters directly
-    # Instead, let PEFT handle the active adapter internally
-    logger.info("Using default adapter configuration")
-    
-    # Now freeze all parameters except selected layers' LoRA adapters
-    logger.info("Selectively unfreezing LoRA parameters...")
-    target_layers = list(range(6))  # First 6 layers
+    # Now selectively unfreeze LoRA adapters for the target layers
+    logger.info(f"Unfreezing LoRA adapters for the first {args.target_layers} layers...")
+    target_layers = list(range(args.target_layers))
     for name, param in peft_model.named_parameters():
         # Default: freeze all parameters
         param.requires_grad = False
@@ -174,9 +185,9 @@ def main():
     
     logger.info(f"Total trainable parameters: {total_trainable}")
     logger.info("Trainable parameters by layer:")
-    for layer, count in trainable_params_by_layer.items():
-        logger.info(f"  {layer}: {count}")
-        
+    for layer, count in sorted(trainable_params_by_layer.items()):
+        logger.info(f"  Layer {layer}: {count}")
+    
     # Verify we're under the parameter limit
     if total_trainable > 1_000_000:
         raise ValueError(f"Model has {total_trainable} trainable parameters, which exceeds the 1 million limit!")
@@ -205,7 +216,81 @@ def main():
         report_to="none",
     )
     
-    # Initialize trainer
+    # Initialize trainer with custom handling
+    logger.info("Initializing trainer...")
+    
+    # Override save_model method to handle adapter errors
+    original_save_model = Trainer.save_model
+    
+    def safe_save_model(self, output_dir=None, _internal_call=False):
+        try:
+            logger.info(f"Saving model to {output_dir}...")
+            original_save_model(self, output_dir, _internal_call)
+            logger.info("Model saved successfully")
+        except AttributeError as e:
+            if 'adapters' in str(e) or 'adapter' in str(e):
+                logger.warning(f"Caught adapter error during save: {str(e)}")
+                logger.info("Attempting alternative save method...")
+                # Alternative save approach
+                if output_dir is None:
+                    output_dir = self.args.output_dir
+                self.model.save_pretrained(output_dir)
+                self.tokenizer.save_pretrained(output_dir)
+                logger.info("Model saved using alternative method")
+            else:
+                raise  # Re-raise if it's not an adapter error
+    
+    # Patch the save_model method
+    Trainer.save_model = safe_save_model
+    
+    # Also patch the _load_best_model method to handle adapter compatibility
+    original_load_best_model = Trainer._load_best_model
+    
+    def safe_load_best_model(self):
+        try:
+            logger.info("Attempting to load best model...")
+            original_load_best_model(self)
+            logger.info("Best model loaded successfully")
+        except (AttributeError, TypeError) as e:
+            if 'active_adapters' in str(e) or 'subscriptable' in str(e):
+                logger.warning(f"Caught adapter compatibility error: {str(e)}")
+                logger.info("Continuing with current model state")
+                
+                # Create symbolic link to best model in best_models directory
+                try:
+                    best_model_checkpoint = self.state.best_model_checkpoint
+                    if best_model_checkpoint:
+                        best_models_dir = os.path.join(self.args.output_dir, "best_models")
+                        os.makedirs(best_models_dir, exist_ok=True)
+                        
+                        # Create a text file with information about the best model
+                        info_file = os.path.join(best_models_dir, "best_model_info.txt")
+                        with open(info_file, 'w') as f:
+                            f.write(f"Best model checkpoint: {best_model_checkpoint}\n")
+                            f.write(f"Best model global step: {self.state.best_global_step}\n")
+                            f.write(f"Best model metric: {self.state.best_metric}\n")
+                            f.write("\nTo use this model, load it from the checkpoint directory above.\n")
+                        
+                        # Create a symbolic link to the best checkpoint
+                        symlink_path = os.path.join(best_models_dir, "best_checkpoint")
+                        if os.path.exists(symlink_path):
+                            os.remove(symlink_path)  # Remove existing symlink if present
+                        
+                        # Create a relative path for the symlink
+                        relative_path = os.path.relpath(best_model_checkpoint, best_models_dir)
+                        os.symlink(relative_path, symlink_path)
+                        
+                        logger.info(f"Created symbolic link to best model at {symlink_path}")
+                except Exception as link_error:
+                    logger.warning(f"Failed to create symbolic link to best model: {str(link_error)}")
+                
+                return
+            else:
+                raise  # Re-raise if it's not the specific error we're handling
+    
+    # Patch the _load_best_model method
+    Trainer._load_best_model = safe_load_best_model
+    
     trainer = Trainer(
         model=peft_model,
         args=training_args,
@@ -242,4 +327,4 @@ def main():
     logger.info("Training completed!")
 
 if __name__ == "__main__":
-    main() 
+    main()

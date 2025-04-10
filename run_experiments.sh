@@ -1,108 +1,131 @@
 #!/bin/bash
 
-# Base directory
-BASE_DIR="/scratch/yw5954/dp_sp25_proj2"
+# Set the base directory for the project
+BASE_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd $BASE_DIR
 
-# Define parameter arrays
-EXP_NAMES=("base" "lora16" "lr1e4" "long" "2gpu")
-BATCH_SIZES=(32 32 32 32 64)
-LEARNING_RATES=(2e-4 2e-4 1e-4 2e-4 2e-4)
-NUM_EPOCHS=(10 10 10 20 10)
-LORA_R_VALUES=(8 16 8 8 8)
-NUM_GPUS=(1 1 1 1 2)
-OUTPUT_DIRS=("outputs/exp1_base" "outputs/exp2_lora16" "outputs/exp3_lr1e4" "outputs/exp4_long" "outputs/exp5_2gpu")
+# Create a timestamp for this experiment batch
+TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+EXPERIMENT_BATCH="lora_experiments_${TIMESTAMP}"
 
-# Create output directory for slurm logs
-mkdir -p outputs
+# Create directories for organization
+SBATCH_DIR="sbatch_scripts/${EXPERIMENT_BATCH}"
+LOGS_DIR="logs/${EXPERIMENT_BATCH}"
+mkdir -p $SBATCH_DIR
+mkdir -p $LOGS_DIR/outputs
+mkdir -p $LOGS_DIR/errors
 
-# Function to create sbatch file
-create_sbatch_file() {
-    local exp_name=$1
-    local num_gpus=$2
-    local batch_size=$3
-    local learning_rate=$4
-    local num_epochs=$5
-    local lora_r=$6
-    local output_dir=$7
-    
-    # Create sbatch file
-    cat > "scripts/sbatch_${exp_name}.sh" << EOF
-#!/bin/bash
-#SBATCH --job-name=${exp_name}
-#SBATCH --output=outputs/slurm_%j_${exp_name}.out
-#SBATCH --error=outputs/slurm_%j_${exp_name}.err
-#SBATCH --time=8:00:00
-#SBATCH --nodes=1
-#SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=4
-#SBATCH --mem=32G
-#SBATCH --gres=gpu:${num_gpus}
-#SBATCH --partition=rtx8000
+echo "Starting experiment batch: $EXPERIMENT_BATCH"
+echo "===========================================" 
 
-# Load necessary modules
-module purge
-module load cuda/11.8.0
-module load anaconda3/2023.03
-module load python3/3.10.12
-
-# Activate conda environment
-source /scratch/yw5954/.bashrc
-conda activate dp_sp25_proj2
-
-# Set CUDA device order
-export CUDA_DEVICE_ORDER=PCI_BUS_ID
-
-# Set environment variables for distributed training
-export MASTER_PORT=29500
-export MASTER_ADDR=\$(hostname)
-
-# Run training script
-if [ ${num_gpus} -gt 1 ]; then
-    # Multi-GPU training using DDP
-    python -m torch.distributed.launch --nproc_per_node=${num_gpus} \\
-        scripts/train.py \\
-        --exp_name ${exp_name} \\
-        --batch_size ${batch_size} \\
-        --learning_rate ${learning_rate} \\
-        --num_epochs ${num_epochs} \\
-        --lora_r ${lora_r} \\
-        --output_dir ${output_dir}
-else
-    # Single GPU training
-    python scripts/train.py \\
-        --exp_name ${exp_name} \\
-        --batch_size ${batch_size} \\
-        --learning_rate ${learning_rate} \\
-        --num_epochs ${num_epochs} \\
-        --lora_r ${lora_r} \\
-        --output_dir ${output_dir}
-fi
-EOF
-
-    # Make the script executable
-    chmod +x "scripts/sbatch_${exp_name}.sh"
-}
-
-# Function to submit job
+# Function to submit a training job
 submit_job() {
     local exp_name=$1
-    echo "Submitting job for experiment: ${exp_name}"
-    sbatch --account=pr_148_general "scripts/sbatch_${exp_name}.sh"
+    local lora_r=$2
+    local lora_alpha=$3
+    local target_layers=$4
+    local learning_rate=$5
+    local batch_size=$6
+    local num_epochs=$7
+    
+    # Calculate total trainable parameters (rough estimate: r * alpha * target_layers * 3 * 768)
+    # This is a rough estimate: each attention component (query, key, value) has a 768x768 weight matrix
+    # For each layer we target, we have 3 components, each with 2 LoRA matrices of size 768xr and rx768
+    # Total params: target_layers * 3 * (768*r + r*768) = target_layers * 3 * 2 * 768 * r
+    local estimated_params=$((target_layers * 3 * 2 * 768 * lora_r))
+    
+    echo "Submitting job: $exp_name"
+    echo "  - LoRA rank (r): $lora_r"
+    echo "  - LoRA alpha: $lora_alpha"
+    echo "  - Target layers: $target_layers"
+    echo "  - Learning rate: $learning_rate"
+    echo "  - Batch size: $batch_size"
+    echo "  - Num epochs: $num_epochs"
+    echo "  - Estimated trainable parameters: $estimated_params"
+    
+    # Create a unique job name
+    local job_name="${exp_name}_r${lora_r}_a${lora_alpha}_l${target_layers}_lr${learning_rate}"
+    
+    # Create sbatch file
+    local sbatch_file="${SBATCH_DIR}/sbatch_${job_name}.sh"
+    
+    # Create the sbatch file with proper configuration for NYU HPC
+    cat <<EOT > $sbatch_file
+#!/bin/bash
+#SBATCH --job-name=$job_name
+#SBATCH --output=${LOGS_DIR}/outputs/${job_name}.out
+#SBATCH --error=${LOGS_DIR}/errors/${job_name}.err
+#SBATCH --time=04:00:00
+#SBATCH --partition=rtx8000
+#SBATCH --gres=gpu:1
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=32gb
+
+# Change to project directory
+cd $BASE_DIR
+
+# Activate virtual environment (if needed)
+# source activate.sh
+
+# Run the training script
+python scripts/train.py --exp_name $exp_name --lora_r $lora_r --lora_alpha $lora_alpha --target_layers $target_layers --learning_rate $learning_rate --batch_size $batch_size --num_epochs $num_epochs
+EOT
+    
+    # Make the sbatch file executable
+    chmod +x $sbatch_file
+    
+    # Submit the job
+    sbatch --account=pr_148_general $sbatch_file
+    
+    # Wait a bit to avoid overwhelming the scheduler
+    sleep 2
 }
 
-# Create and submit jobs for each experiment
-for i in "${!EXP_NAMES[@]}"; do
-    exp_name="exp${i}_${EXP_NAMES[$i]}"
-    create_sbatch_file \
-        "$exp_name" \
-        "${NUM_GPUS[$i]}" \
-        "${BATCH_SIZES[$i]}" \
-        "${LEARNING_RATES[$i]}" \
-        "${NUM_EPOCHS[$i]}" \
-        "${LORA_R_VALUES[$i]}" \
-        "${OUTPUT_DIRS[$i]}"
-    submit_job "$exp_name"
-done
+# === Experiment 1: Baseline ===
+# r=8, alpha=16, target_layers=6, lr=2e-4, batch_size=32, epochs=10
+# Estimated params: 6 * 3 * 2 * 768 * 8 = 221,184
+submit_job "baseline" 8 16 6 2e-4 32 10
 
-echo "All jobs submitted. Check outputs directory for slurm logs." 
+# === Experiment 2: Reduced Rank ===
+# r=4, alpha=8, target_layers=6, lr=2e-4, batch_size=32, epochs=10
+# Estimated params: 6 * 3 * 2 * 768 * 4 = 110,592
+submit_job "reduced_rank" 4 8 6 2e-4 32 10
+
+# === Experiment 3: Minimal Configuration ===
+# r=2, alpha=4, target_layers=3, lr=2e-4, batch_size=32, epochs=10
+# Estimated params: 3 * 3 * 2 * 768 * 2 = 27,648
+submit_job "minimal" 2 4 3 2e-4 32 10
+
+# === Experiment 4: Higher Learning Rate ===
+# r=4, alpha=8, target_layers=6, lr=5e-4, batch_size=32, epochs=10
+# Same params as reduced_rank but with higher learning rate
+submit_job "higher_lr" 4 8 6 5e-4 32 10
+
+# === Experiment 5: Lower Learning Rate ===
+# r=4, alpha=8, target_layers=6, lr=1e-4, batch_size=32, epochs=10
+# Same params as reduced_rank but with lower learning rate
+submit_job "lower_lr" 4 8 6 1e-4 32 10
+
+# === Experiment 6: More Layers ===
+# r=2, alpha=4, target_layers=12, lr=2e-4, batch_size=32, epochs=10
+# Estimated params: 12 * 3 * 2 * 768 * 2 = 110,592
+submit_job "more_layers" 2 4 12 2e-4 32 10
+
+# === Experiment 7: Longer Training ===
+# r=4, alpha=8, target_layers=6, lr=2e-4, batch_size=32, epochs=20
+# Same params as reduced_rank but with longer training
+submit_job "longer_training" 4 8 6 2e-4 32 20
+
+# === Experiment 8: Larger Batch Size ===
+# r=4, alpha=8, target_layers=6, lr=2e-4, batch_size=64, epochs=10
+# Same params as reduced_rank but with larger batch size
+submit_job "larger_batch" 4 8 6 2e-4 64 10
+
+echo "===========================================" 
+echo "All jobs submitted for experiment batch: $EXPERIMENT_BATCH"
+echo "Check status with: squeue -u $USER"
+echo "Sbatch files are in: $SBATCH_DIR"
+echo "Output logs are in: $LOGS_DIR/outputs"
+echo "Error logs are in: $LOGS_DIR/errors" 
