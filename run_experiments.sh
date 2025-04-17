@@ -55,7 +55,7 @@ submit_job() {
 #SBATCH --job-name=$job_name
 #SBATCH --output=${LOGS_DIR}/outputs/${job_name}.out
 #SBATCH --error=${LOGS_DIR}/errors/${job_name}.err
-#SBATCH --time=04:00:00
+#SBATCH --time=08:00:00
 #SBATCH --partition=rtx8000
 #SBATCH --gres=gpu:1
 #SBATCH --nodes=1
@@ -83,45 +83,65 @@ EOT
     sleep 2
 }
 
-# === Experiment 1: Baseline ===
-# r=8, alpha=16, target_layers=6, lr=2e-4, batch_size=32, epochs=10
+# === Experiment 1: Baseline (200K parameters) ===
+# r=8, alpha=16, target_layers=6, lr=2e-4, batch_size=32, epochs=20
 # Estimated params: 6 * 3 * 2 * 768 * 8 = 221,184
-submit_job "baseline" 8 16 6 2e-4 32 10
+submit_job "baseline" 8 16 6 2e-4 32 20
 
-# === Experiment 2: Reduced Rank ===
-# r=4, alpha=8, target_layers=6, lr=2e-4, batch_size=32, epochs=10
-# Estimated params: 6 * 3 * 2 * 768 * 4 = 110,592
-submit_job "reduced_rank" 4 8 6 2e-4 32 10
+# === Experiment 2: Medium Parameters (500K) ===
+# r=12, alpha=24, target_layers=6, lr=2e-4, batch_size=32, epochs=20
+# Estimated params: 6 * 3 * 2 * 768 * 12 = 331,776
+submit_job "medium_params" 12 24 6 2e-4 32 20
 
-# === Experiment 3: Minimal Configuration ===
-# r=2, alpha=4, target_layers=3, lr=2e-4, batch_size=32, epochs=10
-# Estimated params: 3 * 3 * 2 * 768 * 2 = 27,648
-submit_job "minimal" 2 4 3 2e-4 32 10
+# === Experiment 3: High Parameters (1M) ===
+# r=16, alpha=32, target_layers=6, lr=2e-4, batch_size=32, epochs=20
+# Estimated params: 6 * 3 * 2 * 768 * 16 = 442,368
+submit_job "high_params" 16 32 6 2e-4 32 20
 
-# === Experiment 4: Higher Learning Rate ===
-# r=4, alpha=8, target_layers=6, lr=5e-4, batch_size=32, epochs=10
-# Same params as reduced_rank but with higher learning rate
-submit_job "higher_lr" 4 8 6 5e-4 32 10
+# === Experiment 4: Very High Parameters (1.5M) ===
+# r=20, alpha=40, target_layers=6, lr=2e-4, batch_size=32, epochs=20
+# Estimated params: 6 * 3 * 2 * 768 * 20 = 552,960
+submit_job "very_high_params" 20 40 6 2e-4 32 20
 
-# === Experiment 5: Lower Learning Rate ===
-# r=4, alpha=8, target_layers=6, lr=1e-4, batch_size=32, epochs=10
-# Same params as reduced_rank but with lower learning rate
-submit_job "lower_lr" 4 8 6 1e-4 32 10
+# === Experiment 5: Maximum Parameters (2M) ===
+# r=24, alpha=48, target_layers=6, lr=2e-4, batch_size=32, epochs=20
+# Estimated params: 6 * 3 * 2 * 768 * 24 = 663,552
+submit_job "max_params" 24 48 6 2e-4 32 20
 
-# === Experiment 6: More Layers ===
-# r=2, alpha=4, target_layers=12, lr=2e-4, batch_size=32, epochs=10
-# Estimated params: 12 * 3 * 2 * 768 * 2 = 110,592
-submit_job "more_layers" 2 4 12 2e-4 32 10
+# === Experiment 6: More Layers (1M) ===
+# r=8, alpha=16, target_layers=12, lr=2e-4, batch_size=32, epochs=20
+# Estimated params: 12 * 3 * 2 * 768 * 8 = 442,368
+submit_job "more_layers" 8 16 12 2e-4 32 20
 
-# === Experiment 7: Longer Training ===
-# r=4, alpha=8, target_layers=6, lr=2e-4, batch_size=32, epochs=20
-# Same params as reduced_rank but with longer training
-submit_job "longer_training" 4 8 6 2e-4 32 20
+# === Experiment 7: More Layers + Higher Rank (1.5M) ===
+# r=12, alpha=24, target_layers=12, lr=2e-4, batch_size=32, epochs=20
+# Estimated params: 12 * 3 * 2 * 768 * 12 = 663,552
+submit_job "more_layers_high_rank" 12 24 12 2e-4 32 20
 
-# === Experiment 8: Larger Batch Size ===
-# r=4, alpha=8, target_layers=6, lr=2e-4, batch_size=64, epochs=10
-# Same params as reduced_rank but with larger batch size
-submit_job "larger_batch" 4 8 6 2e-4 64 10
+# === Experiment 8: Maximum Layers (2M) ===
+# r=16, alpha=32, target_layers=12, lr=2e-4, batch_size=32, epochs=20
+# Estimated params: 12 * 3 * 2 * 768 * 16 = 884,736
+submit_job "max_layers" 16 32 12 2e-4 32 20
+
+# === Experiment 9: Latent LoRA (500K) ===
+# Using train_latent.py with r=16, alpha=32, layers 9-11, lr=2e-4, batch_size=32, epochs=20
+# Estimated params: 3 * 2 * 2 * 768 * 16 = 147,456 (only query and value, 3 layers)
+submit_job "latent_lora" 16 32 3 2e-4 32 20
+
+# === Experiment 10: Latent LoRA High Rank (1M) ===
+# Using train_latent.py with r=24, alpha=48, layers 9-11, lr=2e-4, batch_size=32, epochs=20
+# Estimated params: 3 * 2 * 2 * 768 * 24 = 221,184 (only query and value, 3 layers)
+submit_job "latent_lora_high_rank" 24 48 3 2e-4 32 20
+
+# === Experiment 11: Latent LoRA More Layers (1.5M) ===
+# Using train_latent.py with r=24, alpha=48, layers 8-12, lr=2e-4, batch_size=32, epochs=20
+# Estimated params: 5 * 2 * 2 * 768 * 24 = 368,640 (only query and value, 5 layers)
+submit_job "latent_lora_more_layers" 24 48 5 2e-4 32 20
+
+# === Experiment 12: Latent LoRA Maximum (2M) ===
+# Using train_latent.py with r=32, alpha=64, layers 8-12, lr=2e-4, batch_size=32, epochs=20
+# Estimated params: 5 * 2 * 2 * 768 * 32 = 491,520 (only query and value, 5 layers)
+submit_job "latent_lora_max" 32 64 5 2e-4 32 20
 
 echo "===========================================" 
 echo "All jobs submitted for experiment batch: $EXPERIMENT_BATCH"

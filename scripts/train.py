@@ -10,7 +10,14 @@ cache_dir.mkdir(exist_ok=True)
 os.environ["TRANSFORMERS_CACHE"] = str(cache_dir)
 os.environ["HF_HOME"] = str(cache_dir)
 
+# Set matplotlib cache directory
+matplotlib_cache_dir = Path(__file__).parent.parent / "matplotlib_cache"
+matplotlib_cache_dir.mkdir(exist_ok=True)
+os.environ["MPLCONFIGDIR"] = str(matplotlib_cache_dir)
+
 import torch
+import numpy as np
+import matplotlib.pyplot as plt
 from transformers import (
     RobertaTokenizer, 
     RobertaForSequenceClassification,
@@ -18,11 +25,161 @@ from transformers import (
     Trainer,
     DataCollatorWithPadding,
     EarlyStoppingCallback,
-    set_seed
+    set_seed,
+    TrainerCallback
 )
 from datasets import load_dataset
 from peft import LoraConfig, get_peft_model
 from sklearn.metrics import accuracy_score
+
+# Add a callback to track and visualize metrics
+class MetricsCallback(TrainerCallback):
+    def __init__(self, output_dir):
+        self.output_dir = output_dir
+        self.metrics_dir = os.path.join(output_dir, "metrics")
+        os.makedirs(self.metrics_dir, exist_ok=True)
+        
+        # Initialize metrics storage
+        self.train_loss = []
+        self.eval_loss = []
+        self.eval_accuracy = []
+        self.steps = []
+        self.current_step = 0
+        
+        # Create logger
+        self.logger = logging.getLogger(__name__)
+        self.logger.info(f"Metrics will be saved to {self.metrics_dir}")
+    
+    def on_init_end(self, args, state, control, **kwargs):
+        """Called when initialization ends"""
+        self.logger.info("Metrics callback initialized")
+        return control
+    
+    def on_train_begin(self, args, state, control, **kwargs):
+        """Called at the beginning of training"""
+        self.logger.info("Starting training with metrics tracking")
+        return control
+    
+    def on_train_end(self, args, state, control, **kwargs):
+        """Called at the end of training"""
+        self.logger.info("Training ended, generating final plots")
+        self.plot_metrics()
+        return control
+    
+    def on_log(self, args, state, control, logs=None, **kwargs):
+        if logs is None:
+            return control
+        
+        # Track training loss
+        if "loss" in logs:
+            self.train_loss.append(logs["loss"])
+            self.steps.append(state.global_step)
+            self.current_step = state.global_step
+        
+        # Track evaluation metrics
+        if "eval_loss" in logs:
+            self.eval_loss.append(logs["eval_loss"])
+            self.eval_accuracy.append(logs["eval_accuracy"])
+            
+            # Save metrics to files
+            np.save(os.path.join(self.metrics_dir, "train_loss.npy"), np.array(self.train_loss))
+            np.save(os.path.join(self.metrics_dir, "eval_loss.npy"), np.array(self.eval_loss))
+            np.save(os.path.join(self.metrics_dir, "eval_accuracy.npy"), np.array(self.eval_accuracy))
+            np.save(os.path.join(self.metrics_dir, "steps.npy"), np.array(self.steps))
+            
+            # Plot metrics
+            self.plot_metrics()
+        
+        return control
+    
+    def plot_metrics(self):
+        """Plot training and validation metrics"""
+        if len(self.train_loss) < 2 or len(self.eval_loss) < 1:
+            return  # Not enough data points to plot
+        
+        # Set style
+        plt.style.use('ggplot')
+        
+        # Create figure with subplots
+        fig, axes = plt.subplots(2, 2, figsize=(15, 12))
+        fig.suptitle('Training Metrics', fontsize=16)
+        
+        # Plot 1: Training Loss
+        axes[0, 0].plot(self.steps, self.train_loss, 'b-', label='Training Loss')
+        axes[0, 0].set_title('Training Loss')
+        axes[0, 0].set_xlabel('Steps')
+        axes[0, 0].set_ylabel('Loss')
+        axes[0, 0].grid(True)
+        axes[0, 0].legend()
+        
+        # Plot 2: Validation Loss
+        eval_steps = self.steps[::len(self.steps)//len(self.eval_loss)][:len(self.eval_loss)]
+        axes[0, 1].plot(eval_steps, self.eval_loss, 'r-', label='Validation Loss')
+        axes[0, 1].set_title('Validation Loss')
+        axes[0, 1].set_xlabel('Steps')
+        axes[0, 1].set_ylabel('Loss')
+        axes[0, 1].grid(True)
+        axes[0, 1].legend()
+        
+        # Plot 3: Validation Accuracy
+        axes[1, 0].plot(eval_steps, self.eval_accuracy, 'g-', label='Validation Accuracy')
+        axes[1, 0].set_title('Validation Accuracy')
+        axes[1, 0].set_xlabel('Steps')
+        axes[1, 0].set_ylabel('Accuracy')
+        axes[1, 0].grid(True)
+        axes[1, 0].legend()
+        
+        # Plot 4: Combined Plot
+        axes[1, 1].plot(self.steps, self.train_loss, 'b-', label='Training Loss')
+        axes[1, 1].plot(eval_steps, self.eval_loss, 'r-', label='Validation Loss')
+        axes[1, 1].plot(eval_steps, self.eval_accuracy, 'g-', label='Validation Accuracy')
+        axes[1, 1].set_title('Combined Metrics')
+        axes[1, 1].set_xlabel('Steps')
+        axes[1, 1].set_ylabel('Value')
+        axes[1, 1].grid(True)
+        axes[1, 1].legend()
+        
+        # Adjust layout and save
+        plt.tight_layout(rect=[0, 0, 1, 0.96])
+        plt.savefig(os.path.join(self.metrics_dir, "training_metrics.png"), dpi=300)
+        plt.close()
+        
+        # Create additional plots
+        
+        # Learning curve (accuracy vs. epochs)
+        plt.figure(figsize=(10, 6))
+        plt.plot(eval_steps, self.eval_accuracy, 'g-', label='Validation Accuracy')
+        plt.title('Learning Curve')
+        plt.xlabel('Steps')
+        plt.ylabel('Accuracy')
+        plt.grid(True)
+        plt.legend()
+        plt.savefig(os.path.join(self.metrics_dir, "learning_curve.png"), dpi=300)
+        plt.close()
+        
+        # Loss comparison
+        plt.figure(figsize=(10, 6))
+        plt.plot(self.steps, self.train_loss, 'b-', label='Training Loss')
+        plt.plot(eval_steps, self.eval_loss, 'r-', label='Validation Loss')
+        plt.title('Loss Comparison')
+        plt.xlabel('Steps')
+        plt.ylabel('Loss')
+        plt.grid(True)
+        plt.legend()
+        plt.savefig(os.path.join(self.metrics_dir, "loss_comparison.png"), dpi=300)
+        plt.close()
+        
+        # Accuracy trend
+        plt.figure(figsize=(10, 6))
+        plt.plot(eval_steps, self.eval_accuracy, 'g-', marker='o')
+        plt.title('Accuracy Trend')
+        plt.xlabel('Steps')
+        plt.ylabel('Accuracy')
+        plt.grid(True)
+        plt.savefig(os.path.join(self.metrics_dir, "accuracy_trend.png"), dpi=300)
+        plt.close()
+        
+        self.logger.info(f"Metrics plots saved to {self.metrics_dir}")
 
 def setup_logging(output_dir):
     """Setup logging configuration"""
@@ -50,6 +207,7 @@ def parse_args():
     parser.add_argument('--lora_alpha', type=int, default=16, help='LoRA alpha')
     parser.add_argument('--target_layers', type=int, default=6, help='Number of layers to apply LoRA to')
     parser.add_argument('--output_dir', type=str, default=None, help='Output directory (default: auto-generated)')
+    parser.add_argument('--disable_plotting', action='store_true', help='Disable metrics plotting')
     return parser.parse_args()
 
 def compute_metrics(pred):
@@ -157,6 +315,29 @@ def main():
                     param.requires_grad = True
                     logger.info(f"Keeping trainable: {name}")
                     break
+    
+    # Calculate and store trainable parameters
+    trainable_params = sum(p.numel() for p in peft_model.parameters() if p.requires_grad)
+    total_params = sum(p.numel() for p in peft_model.parameters())
+    
+    # Save parameter counts to a file
+    param_info_file = os.path.join(args.output_dir, "parameter_counts.txt")
+    with open(param_info_file, 'w') as f:
+        f.write(f"Total parameters: {total_params:,}\n")
+        f.write(f"Trainable parameters: {trainable_params:,}\n")
+        f.write(f"Non-trainable parameters: {total_params - trainable_params:,}\n")
+        f.write(f"Percentage trainable: {100 * trainable_params / total_params:.2f}%\n\n")
+        f.write(f"LoRA configuration:\n")
+        f.write(f"  - LoRA rank (r): {args.lora_r}\n")
+        f.write(f"  - LoRA alpha: {args.lora_alpha}\n")
+        f.write(f"  - Target modules: {peft_config.target_modules}\n")
+        f.write(f"  - Target layers: {target_layers}\n")
+        f.write(f"  - Number of layers: {len(target_layers)}\n")
+    
+    logger.info(f"Total parameters: {total_params:,}")
+    logger.info(f"Trainable parameters: {trainable_params:,}")
+    logger.info(f"Non-trainable parameters: {total_params - trainable_params:,}")
+    logger.info(f"Percentage trainable: {100 * trainable_params / total_params:.2f}%")
     
     # Print parameter counts
     logger.info("LoRA model created")
@@ -291,6 +472,22 @@ def main():
     # Patch the _load_best_model method
     Trainer._load_best_model = safe_load_best_model
     
+    # Create callbacks list
+    callbacks = [
+        EarlyStoppingCallback(
+            early_stopping_patience=3,
+            early_stopping_threshold=0.001
+        )
+    ]
+    
+    # Add metrics callback if plotting is not disabled
+    if not args.disable_plotting:
+        metrics_callback = MetricsCallback(args.output_dir)
+        callbacks.append(metrics_callback)
+        logger.info("Metrics plotting enabled")
+    else:
+        logger.info("Metrics plotting disabled")
+    
     trainer = Trainer(
         model=peft_model,
         args=training_args,
@@ -299,12 +496,7 @@ def main():
         tokenizer=tokenizer,
         data_collator=data_collator,
         compute_metrics=compute_metrics,
-        callbacks=[
-            EarlyStoppingCallback(
-                early_stopping_patience=3,
-                early_stopping_threshold=0.001
-            )
-        ]
+        callbacks=callbacks
     )
     
     # Train model
@@ -319,6 +511,11 @@ def main():
         # Evaluate
         metrics = trainer.evaluate()
         logger.info(f"Final evaluation metrics: {metrics}")
+        
+        # Generate final plots if metrics callback was used
+        if not args.disable_plotting:
+            metrics_callback.plot_metrics()
+            logger.info("Final metrics plots generated")
         
     except Exception as e:
         logger.error(f"Training failed with error: {str(e)}")

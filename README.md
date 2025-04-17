@@ -2,6 +2,11 @@
 
 This project implements a low-rank adaptation (LoRA) of the RoBERTa model for the AG News classification task, with a focus on parameter efficiency and training optimization.
 
+## Current Best
+`dp_sp25_proj2/outputs/latent_lora_20250416_144307_l9-11*`
+This is a latent layer lora only focused on layer 9 to layer 11 of the original model. 
+So far, latent lora seems have a much better generalization ability than applying to all layers; data augmentation hurts.
+
 ## Project Structure
 
 ```
