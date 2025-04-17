@@ -68,3 +68,5 @@ Thumbs.db
 best_models/
 results/
 slurm-*.out 
+
+nltk_data/
