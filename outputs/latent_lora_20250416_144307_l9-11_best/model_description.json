@@ -1,0 +1,26 @@
+{
+  "model_type": "RoBERTa with LoRA",
+  "base_model": "roberta-base",
+  "task": "Sequence Classification",
+  "parameter_counts": {
+    "total_parameters": 125316104,
+    "trainable_parameters": 593668,
+    "non_trainable_parameters": 124722436,
+    "percentage_trainable": "0.47%"
+  },
+  "lora_configuration": {
+    "rank": 8,
+    "alpha": 16,
+    "dropout": 0.1,
+    "target_modules": [
+      "query",
+      "value"
+    ],
+    "layers_to_transform": [
+      9,
+      10,
+      11
+    ],
+    "number_of_layers": 3
+  }
+}

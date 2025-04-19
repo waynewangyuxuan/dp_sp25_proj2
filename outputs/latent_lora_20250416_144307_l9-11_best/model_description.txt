@@ -1,0 +1,24 @@
+Model Description
+================
+
+Model Type and Base Model
+------------------------
+Model Type: RoBERTa with LoRA
+Base Model: roberta-base
+Task: Sequence Classification
+
+Parameter Counts
+----------------
+Total Parameters: 125,316,104
+Trainable Parameters: 593,668
+Non-trainable Parameters: 124,722,436
+Percentage Trainable: 0.47%
+
+LoRA Configuration
+------------------
+LoRA Rank (r): 8
+LoRA Alpha: 16
+LoRA Dropout: 0.1
+Target Modules: ['query', 'value']
+Layers to Transform: [9, 10, 11]
+Number of Layers: 3

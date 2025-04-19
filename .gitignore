@@ -27,7 +27,9 @@ ENV/
 env/
 
 # Training outputs and logs
-outputs/
+outputs/*
+!outputs/latent_lora_20250416_144307_l9-11_best/
+!outputs/latent_lora_20250416_144307_l9-11_best/**
 logs/
 checkpoints/
 sbatch_scripts/
