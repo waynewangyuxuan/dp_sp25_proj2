@@ -8,7 +8,7 @@ This project implements a low-rank adaptation (LoRA) of the RoBERTa model for th
 This performance was achieved using the submission file: [`submission_latent_lora_20250416_144307_l9-11_20250416_1601.csv`](submissions/submission_latent_lora_20250416_144307_l9-11_20250416_1601.csv)
 
 ## Current Best Model
-[`dp_sp25_proj2/outputs/latent_lora_20250416_144307_l9-11_best`](outputs/latent_lora_20250416_144307_l9-11_best)
+[`dp_sp25_proj2/outputs/latent_lora_20250416_144307_l9-11_best/final_model`](outputs/latent_lora_20250416_144307_l9-11_best)
 
 This is a latent layer LoRA model focused only on layers 9-11 of the original RoBERTa model. The model achieves excellent performance while using only 0.47% of trainable parameters compared to the full model.
 
@@ -79,12 +79,12 @@ dp_sp25_proj2/
 │   └── [latent_lora_20250416_144307_l9-11_best](outputs/latent_lora_20250416_144307_l9-11_best)/    # Best experiment output
 │       ├── [final_model](outputs/latent_lora_20250416_144307_l9-11_best/final_model)/  # Best model checkpoint
 │       ├── [metrics](outputs/latent_lora_20250416_144307_l9-11_best/metrics)/      # Training metrics and plots
-│       │   ├── [training_log.txt](outputs/latent_lora_20250416_144307_l9-11_best/metrics/training_log.txt)  # Recreated training log
-│       │   ├── learning_curve.png
-│       │   ├── loss_comparison.png
-│       │   ├── accuracy_trend.png
-│       │   └── training_metrics.png
-│       └── [logs](outputs/latent_lora_20250416_144307_l9-11_best/logs)/         # Training logs
+│       ├── training_log.txt
+│       ├── learning_curve.png
+│       ├── loss_comparison.png
+│       ├── accuracy_trend.png
+│       └── training_metrics.png
+│              
 ├── scripts/               # Training and evaluation scripts
 │   ├── [train_latent.py](scripts/train_latent.py)   # Main training script
 │   ├── [predict.py](scripts/predict.py)        # Prediction script
@@ -92,8 +92,8 @@ dp_sp25_proj2/
 │   └── [generate_training_log.py](scripts/generate_training_log.py) # Training log generator
 └── src/                   # Source code
     ├── data/             # Data loading and preprocessing
-    ├── models/           # Model architecture
-    └── training/         # Training utilities
+    ├── models/           
+    └── training/         
 ```
 
 ## Setup
