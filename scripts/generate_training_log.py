@@ -1,6 +1,7 @@
 import numpy as np
 import os
 from datetime import datetime
+import sys
 
 def load_npy_file(file_path):
     try:
@@ -17,10 +18,10 @@ def format_value(value):
 
 def generate_training_log(metrics_dir):
     # Load all metrics
-    steps = load_npy_file(os.path.join(metrics_dir, 'steps.npy'))
-    train_loss = load_npy_file(os.path.join(metrics_dir, 'train_loss.npy'))
-    eval_loss = load_npy_file(os.path.join(metrics_dir, 'eval_loss.npy'))
-    eval_accuracy = load_npy_file(os.path.join(metrics_dir, 'eval_accuracy.npy'))
+    steps = load_npy_file(os.path.join(metrics_dir, 'metrics/steps.npy'))
+    train_loss = load_npy_file(os.path.join(metrics_dir, 'metrics/train_loss.npy'))
+    eval_loss = load_npy_file(os.path.join(metrics_dir, 'metrics/eval_loss.npy'))
+    eval_accuracy = load_npy_file(os.path.join(metrics_dir, 'metrics/eval_accuracy.npy'))
 
     # Check if any of the files failed to load
     if any(x is None for x in [steps, train_loss, eval_loss, eval_accuracy]):
@@ -69,5 +70,8 @@ def generate_training_log(metrics_dir):
     print(f"Training log generated at: {output_path}")
 
 if __name__ == "__main__":
-    metrics_dir = "/scratch/yw5954/dp_sp25_proj2/outputs/latent_lora_20250416_144307_l9-11_best/metrics"
+    if len(sys.argv) != 2:
+        print("Usage: python generate_training_log.py <metrics_dir>")
+        sys.exit(1)
+    metrics_dir = sys.argv[1]
     generate_training_log(metrics_dir) 
