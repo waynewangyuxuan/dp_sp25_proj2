@@ -8,7 +8,7 @@ This project implements a low-rank adaptation (LoRA) of the RoBERTa model for th
 This performance was achieved using the submission file: [`submission_latent_lora_20250416_144307_l9-11_20250416_1601.csv`](submissions/submission_latent_lora_20250416_144307_l9-11_20250416_1601.csv)
 
 ## Current Best Model
-[`dp_sp25_proj2/outputs/latent_lora_20250416_144307_l9-11_best/final_model`](outputs/latent_lora_20250416_144307_l9-11_best)
+[`final_model`](outputs/latent_lora_20250416_144307_l9-11_best/final_model/)
 
 This is a latent layer LoRA model focused only on layers 9-11 of the original RoBERTa model. The model achieves excellent performance while using only 0.47% of trainable parameters compared to the full model.
 
