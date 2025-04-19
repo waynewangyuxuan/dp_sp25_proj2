@@ -21,6 +21,8 @@ This is a latent layer LoRA model focused only on layers 9-11 of the original Ro
   - Trainable Parameters: 593,668 (0.47%)
   - Non-trainable Parameters: 124,722,436 (99.53%)
 
+For more detailed information, refer to the [model_description.txt](outputs/latent_lora_20250416_144307_l9-11_best/model_description.txt) and [model_description.json](outputs/latent_lora_20250416_144307_l9-11_best/model_description.json) files.
+
 ### LoRA Configuration
 
 - **LoRA Rank (r)**: 8
@@ -135,10 +137,13 @@ The script will:
 
 ### Model Description
 
-Generate a detailed model description:
+The model description files, [model_description.txt](outputs/latent_lora_20250416_144307_l9-11_best/model_description.txt) and [model_description.json](outputs/latent_lora_20250416_144307_l9-11_best/model_description.json), provide detailed information about the model configuration, including parameter counts and LoRA settings.
+
+These files are generated using the `generate_model_description.py` script. To create these files, run:
 ```bash
 python scripts/generate_model_description.py outputs/latent_lora_20250416_144307_l9-11_best
 ```
+This script extracts model details and saves them in both text and JSON formats for easy reference and integration with other tools.
 
 ### Training Log
 
